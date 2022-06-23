@@ -43,8 +43,8 @@ contract BridgeWrapper {
 	function withdraw(uint value) public {
 		require(value > 0, "We need to unlock at least 1 wei");
         require(value < lockedETH, "Not sufficient funds in contract");
-		payable(msg.sender).transfer(value);
         lockedETH = lockedETH - value;
+		payable(msg.sender).transfer(value);
 		emit LogETHWithdrawn(msg.sender, value);
 	}
 
