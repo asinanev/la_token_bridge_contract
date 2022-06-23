@@ -7,9 +7,9 @@ contract BridgeWrapper {
 
     BridgeToken public BRGToken;
 
-    uint256 lockedETH;
+    uint256 private lockedETH;
 
-    mapping(bytes32 => uint256) availableETH;
+    mapping(bytes32 => uint256) private availableETH;
     
     event LogETHLocked(address sender, uint256 amount);
     event LogETHMinted(address sender, uint256 amount);
@@ -42,7 +42,17 @@ contract BridgeWrapper {
 
 	function withdraw(uint value) public {
 		require(value > 0, "We need to unlock at least 1 wei");
+        require(value < lockedETH, "Not sufficient funds in contract");
 		payable(msg.sender).transfer(value);
+        lockedETH = lockedETH - value;
 		emit LogETHWithdrawn(msg.sender, value);
 	}
+
+    function viewLockedETH() external view returns (uint256) {
+        return lockedETH;
+    }
+
+    function getBalanceOf(address account) external view returns (uint256) {
+        return BRGToken.balanceOf(account);
+    }
 }
