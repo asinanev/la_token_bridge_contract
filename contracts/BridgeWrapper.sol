@@ -12,7 +12,9 @@ contract BridgeWrapper {
     mapping(bytes32 => uint256) availableETH;
     
     event LogETHLocked(address sender, uint256 amount);
+    event LogETHMinted(address sender, uint256 amount);
 	event LogETHUnwrapped(address sender, uint256 amount);
+    event LogETHWithdrawn(address sender, uint256 amount);
 
     constructor() {
         BRGToken = new BridgeToken();
@@ -27,8 +29,8 @@ contract BridgeWrapper {
 
     function mint(uint value) public {
         require(value > 0, "We need to mint at least 1 wei");
-        BRGToken.mint(msg.sender, msg.value);
-        emit LogETHMinted(msg.sender, msg.value);
+        BRGToken.mint(msg.sender, value);
+        emit LogETHMinted(msg.sender, value);
     }
 
     function unwrap(uint value) public {
