@@ -55,4 +55,9 @@ contract BridgeWrapper {
     function getBalanceOf(address account) external view returns (uint256) {
         return BRGToken.balanceOf(account);
     }
+
+    // lock
+    // claim
+    // burn
+    // release
 }
