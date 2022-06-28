@@ -43,21 +43,21 @@ contract Bridge {
         emit LogTokenMinted(tokenAddress, to, amount, _nonce);
     }
     
-    function burnFrom(address tokenAddress, uint amount) external {
-        require(amount > 0, "amount is too low");
-		tokenList[tokenAddress].burnFrom(msg.sender, amount);
+    function burnFrom(address tokenAddress, address  owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external onlyGateway {
+        require(value > 0, "amount is too low");
+		tokenList[tokenAddress].burnFrom(owner, spender, value, deadline, v, r, s);
         nonce++;
-        emit LogTokenBurned(tokenAddress, msg.sender, amount, nonce);
+        emit LogTokenBurned(tokenAddress, msg.sender, value, nonce);
     }
 
-	function release(uint amount, address receiver, uint _nonce) external onlyGateway {
-		require(amount > 0, "amount is too low");
+	function release(uint value, address receiver, uint _nonce) external onlyGateway {
+		require(value > 0, "amount is too low");
         require(processedNonces[_nonce] == false, "transaction already processed");
         processedNonces[_nonce] = true;
 
-		payable(receiver).transfer(amount);
+		payable(receiver).transfer(value);
 		
-        emit LogETHReleased(receiver, amount, _nonce);
+        emit LogETHReleased(receiver, value, _nonce);
 	}
 
     modifier onlyGateway {
