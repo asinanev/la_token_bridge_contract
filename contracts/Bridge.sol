@@ -14,7 +14,7 @@ contract Bridge {
     
     event LogETHLocked(address sender, uint256 amount, uint nonce);
     event LogTokenMinted(address tokenAddress, address receiver, uint256 amount, uint nonce);
-	event LogTokenBurned(address tokenAddress, address sender, uint256 amount, uint nonce);
+    event LogTokenBurned(address tokenAddress, address sender, uint256 amount, uint nonce);
     event LogETHReleased(address receiver, uint256 amount, uint nonce);
 
     constructor(address _gateway) {
