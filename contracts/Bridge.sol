@@ -1,15 +1,15 @@
 //SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import { ERC20PresetMinterPauser } from "@openzeppelin/contracts/token/ERC20/presets/ERC20PresetMinterPauser.sol";
+import { WrappedToken } from "./WrappedToken.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract Bridge {
+contract Bridge is Ownable{
 
     address private gateway;
     uint private nonce;
 
-    mapping(address => bool) private tokenExistance;
-    mapping(address => bool) private tokenExistanceList;
+    mapping(address => address) private nativeToWrapped;
     mapping(uint => bool) private processedNonces;
     
     event LogETHLocked(address tokenAddress, address sender, uint256 amount, uint nonce);
@@ -33,21 +33,30 @@ contract Bridge {
         require(processedNonces[_nonce] == false, "transaction already processed");
         processedNonces[_nonce] = true;
 
-        if (!tokenExistance[tokenAddress]) {
-            tokenExistance[tokenAddress] = true;
+        address wrappedTokenAddress = nativeToWrapped[tokenAddress];
+        WrappedToken wrappedTokenInstance;
+
+        if (wrappedTokenAddress != address(0)) {
+            wrappedTokenInstance = WrappedToken(wrappedTokenAddress);
+        } else {
+            wrappedTokenInstance = new WrappedToken();
+            nativeToWrapped[tokenAddress] = address(
+                wrappedTokenInstance
+            );
         }
 
-        ERC20PresetMinterPauser token = ERC20PresetMinterPauser(tokenAddress);
-        token.mint(to, amount);
+        wrappedTokenInstance.mint(to, amount);
 
-        emit LogTokenMinted(tokenAddress, to, amount, _nonce);
+        emit LogTokenMinted(nativeToWrapped[tokenAddress], to, amount, _nonce);
     }
     
-    // Approve from UI
     function burnFrom(address tokenAddress, address  owner, uint256 value) external onlyGateway {
         require(value > 0, "amount is too low");
-        ERC20PresetMinterPauser token = ERC20PresetMinterPauser(tokenAddress);
-		token.burnFrom(owner, value);
+
+        address wrappedTokenAddress = nativeToWrapped[tokenAddress];
+        WrappedToken wrappedTokenInstance = WrappedToken(wrappedTokenAddress);
+
+		wrappedTokenInstance.burnFrom(owner, value);
         nonce++;
         emit LogTokenBurned(tokenAddress, owner, value, nonce);
     }
