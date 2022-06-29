@@ -1,7 +1,7 @@
 //SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import "./IERC20Mintable.sol";
+import { ERC20PresetMinterPauser } from "@openzeppelin/contracts/token/ERC20/presets/ERC20PresetMinterPauser.sol";
 
 contract Bridge {
 
@@ -9,10 +9,10 @@ contract Bridge {
     uint private nonce;
 
     mapping(address => bool) private tokenExistance;
-    mapping(address => IERC20Mintable) private tokenList;
+    mapping(address => bool) private tokenExistanceList;
     mapping(uint => bool) private processedNonces;
     
-    event LogETHLocked(address sender, uint256 amount, uint nonce);
+    event LogETHLocked(address tokenAddress, address sender, uint256 amount, uint nonce);
     event LogTokenMinted(address tokenAddress, address receiver, uint256 amount, uint nonce);
     event LogTokenBurned(address tokenAddress, address sender, uint256 amount, uint nonce);
     event LogETHReleased(address receiver, uint256 amount, uint nonce);
@@ -21,33 +21,35 @@ contract Bridge {
         gateway = _gateway;
     }
 
-    function lock() external payable {
+    function lock(address tokenAddress) external payable {
 		require(msg.value > 0, "amount is too low");
         nonce++;
-		emit LogETHLocked(msg.sender, msg.value, nonce);
+		emit LogETHLocked(tokenAddress, msg.sender, msg.value, nonce);
 	}
 
     function claim(address tokenAddress, uint amount, address to, uint _nonce) external onlyGateway {
-        require(to != address(0), "cannot trasfer to zero address");
+        require(to != address(0), "cannot transfer to zero address");
         require(amount > 0, "amount is too low");
         require(processedNonces[_nonce] == false, "transaction already processed");
         processedNonces[_nonce] = true;
 
         if (!tokenExistance[tokenAddress]) {
-            tokenList[tokenAddress] = IERC20Mintable(tokenAddress);
             tokenExistance[tokenAddress] = true;
         }
 
-        tokenList[tokenAddress].mint(to, amount);
+        ERC20PresetMinterPauser token = ERC20PresetMinterPauser(tokenAddress);
+        token.mint(to, amount);
 
         emit LogTokenMinted(tokenAddress, to, amount, _nonce);
     }
     
-    function burnFrom(address tokenAddress, address  owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external onlyGateway {
+    // Approve from UI
+    function burnFrom(address tokenAddress, address  owner, uint256 value) external onlyGateway {
         require(value > 0, "amount is too low");
-		tokenList[tokenAddress].burnFrom(owner, spender, value, deadline, v, r, s);
+        ERC20PresetMinterPauser token = ERC20PresetMinterPauser(tokenAddress);
+		token.burnFrom(owner, value);
         nonce++;
-        emit LogTokenBurned(tokenAddress, msg.sender, value, nonce);
+        emit LogTokenBurned(tokenAddress, owner, value, nonce);
     }
 
 	function release(uint value, address receiver, uint _nonce) external onlyGateway {
@@ -64,5 +66,4 @@ contract Bridge {
       require(msg.sender == gateway, "only gateway has access");
       _;
     }
-
 }
