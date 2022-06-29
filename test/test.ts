@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { artifacts, web3 } from "hardhat";
 
-const { BN, expectEvent } = require("@openzeppelin/test-helpers");
+const { BN, constants, expectEvent } = require("@openzeppelin/test-helpers");
 
 const Bridge = artifacts.require("Bridge");
 const WrappedToken = artifacts.require("WrappedToken");
@@ -48,6 +48,16 @@ describe("Bridge and BridgeToken testing suite", function () {
   });
 
   describe("Minting mechanism", function () {
+    it("Should revert with reason 'cannot transfer to zero address'", async function () {
+      await expect(
+        bridgeTrg.claim(
+          nativeToken.address,
+          0,
+          constants.ZERO_ADDRESS,
+          currentSrcNonce
+        )
+      ).to.be.revertedWith("cannot transfer to zero address");
+    });
     it("Should revert with reason 'amount is too low'", async function () {
       await expect(
         bridgeTrg.claim(nativeToken.address, 0, accounts[2], currentSrcNonce)
@@ -65,9 +75,21 @@ describe("Bridge and BridgeToken testing suite", function () {
     it("Should emit LogTokenMinted event with senders address and the amount of BRG minted", async function () {
       const mintETHTx = await bridgeTrg.claim(
         nativeToken.address,
-        50,
+        25,
         accounts[2],
         currentSrcNonce
+      );
+
+      await expectEvent(mintETHTx, "LogTokenMinted");
+      remoteToken = await WrappedToken.at(mintETHTx.logs[0].args[0]);
+    });
+
+    it("Should emit LogTokenMinted event with senders address and the amount of BRG minted", async function () {
+      const mintETHTx = await bridgeTrg.claim(
+        nativeToken.address,
+        25,
+        accounts[2],
+        2
       );
 
       await expectEvent(mintETHTx, "LogTokenMinted");
