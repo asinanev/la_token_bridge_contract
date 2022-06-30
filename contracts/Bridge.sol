@@ -21,58 +21,64 @@ contract Bridge is Ownable{
         gateway = _gateway;
     }
 
-    function lock(address tokenAddress) external payable {
-		require(msg.value > 0, "amount is too low");
+    function lock(address _tokenAddress) external payable checkAmount(msg.value) {
         nonce++;
-		emit LogETHLocked(tokenAddress, msg.sender, msg.value, nonce);
+		emit LogETHLocked(_tokenAddress, msg.sender, msg.value, nonce);
 	}
 
-    function claim(address tokenAddress, uint amount, address to, uint _nonce) external onlyGateway {
-        require(to != address(0), "cannot transfer to zero address");
-        require(amount > 0, "amount is too low");
-        require(processedNonces[_nonce] == false, "transaction already processed");
+    function claim(address _tokenAddress, uint _value, address _recepient, uint _nonce) external onlyGateway checkAddress(_recepient) checkStatus(_nonce) checkAmount(_value) {
         processedNonces[_nonce] = true;
 
-        address wrappedTokenAddress = nativeToWrapped[tokenAddress];
+        address wrappedTokenAddress = nativeToWrapped[_tokenAddress];
         WrappedToken wrappedTokenInstance;
 
         if (wrappedTokenAddress != address(0)) {
             wrappedTokenInstance = WrappedToken(wrappedTokenAddress);
         } else {
             wrappedTokenInstance = new WrappedToken();
-            nativeToWrapped[tokenAddress] = address(
+            nativeToWrapped[_tokenAddress] = address(
                 wrappedTokenInstance
             );
         }
 
-        wrappedTokenInstance.mint(to, amount);
+        wrappedTokenInstance.mint(_recepient, _value);
 
-        emit LogTokenMinted(nativeToWrapped[tokenAddress], to, amount, _nonce);
+        emit LogTokenMinted(nativeToWrapped[_tokenAddress], _recepient, _value, _nonce);
     }
     
-    function burnFrom(address tokenAddress, address  owner, uint256 value) external onlyGateway {
-        require(value > 0, "amount is too low");
-
-        address wrappedTokenAddress = nativeToWrapped[tokenAddress];
+    function burnFrom(address _tokenAddress, address  _owner, uint256 _value) external onlyGateway checkAddress(_owner) checkAmount(_value)  {
+        address wrappedTokenAddress = nativeToWrapped[_tokenAddress];
+        require(wrappedTokenAddress != address(0), "token contract unknown");
         WrappedToken wrappedTokenInstance = WrappedToken(wrappedTokenAddress);
+		wrappedTokenInstance.burnFrom(_owner, _value);
 
-		wrappedTokenInstance.burnFrom(owner, value);
         nonce++;
-        emit LogTokenBurned(tokenAddress, owner, value, nonce);
+        emit LogTokenBurned(_tokenAddress, _owner, _value, nonce);
     }
 
-	function release(uint value, address receiver, uint _nonce) external onlyGateway {
-		require(value > 0, "amount is too low");
-        require(processedNonces[_nonce] == false, "transaction already processed");
+	function release(address _receiver, uint _value, uint _nonce) external onlyGateway checkAddress(_receiver) checkStatus(_nonce) checkAmount(_value) {
         processedNonces[_nonce] = true;
-
-		payable(receiver).transfer(value);
-		
-        emit LogETHReleased(receiver, value, _nonce);
+		payable(_receiver).transfer(_value);
+        emit LogETHReleased(_receiver, _value, _nonce);
 	}
 
     modifier onlyGateway {
       require(msg.sender == gateway, "only gateway has access");
       _;
+    }
+
+    modifier checkAddress(address _address) {
+        require(_address != address(0), "cannot use the zero address");
+        _;
+    }
+
+    modifier checkStatus(uint256 _nonce) {
+        require(processedNonces[_nonce] == false, "transaction already processed");
+        _;
+    }
+
+    modifier checkAmount(uint256 _value) {
+        require(_value > 0, "amount is too low");
+        _;
     }
 }

@@ -48,15 +48,15 @@ describe("Bridge and BridgeToken testing suite", function () {
   });
 
   describe("Minting mechanism", function () {
-    it("Should revert with reason 'cannot transfer to zero address'", async function () {
+    it("Should revert with reason 'cannot use the zero address'", async function () {
       await expect(
         bridgeTrg.claim(
           nativeToken.address,
-          0,
+          20,
           constants.ZERO_ADDRESS,
           currentSrcNonce
         )
-      ).to.be.revertedWith("cannot transfer to zero address");
+      ).to.be.revertedWith("cannot use the zero address");
     });
     it("Should revert with reason 'amount is too low'", async function () {
       await expect(
@@ -118,6 +118,12 @@ describe("Bridge and BridgeToken testing suite", function () {
       ).to.be.revertedWith("only gateway has access");
     });
 
+    it("Should be reverted with reason 'token contract unknown'", async function () {
+      await expect(
+        bridgeTrg.burnFrom(constants.ZERO_ADDRESS, accounts[2], 50)
+      ).to.be.revertedWith("token contract unknown");
+    });
+
     it("Should collect tokens to be burned, burn them and emit a LogTokenBurned event", async function () {
       const approvalTx = await remoteToken.approve(bridgeTrg.address, 50, {
         from: accounts[2],
@@ -149,22 +155,22 @@ describe("Bridge and BridgeToken testing suite", function () {
   describe("Release mechanism", async function () {
     it("Should revert with reason 'only gateway has access'", async function () {
       await expect(
-        bridgeSrc.release(0, accounts[1], currentTrgNonce, {
+        bridgeSrc.release(accounts[1], 0, currentTrgNonce, {
           from: accounts[1],
         })
       ).to.be.revertedWith("only gateway has access");
     });
 
     it("Should revert with reason 'amount is too low'", async function () {
-      await expect(bridgeSrc.release(0, accounts[1], 1)).to.be.revertedWith(
+      await expect(bridgeSrc.release(accounts[1], 0, 1)).to.be.revertedWith(
         "amount is too low"
       );
     });
 
     it("Should release the locked tokens and send them to the receiver, then emit LogETHReleased event", async function () {
       const releaseETHTx = await bridgeSrc.release(
-        25,
         accounts[1],
+        25,
         currentTrgNonce
       );
       await expectEvent(releaseETHTx, "LogETHReleased", {
@@ -175,7 +181,7 @@ describe("Bridge and BridgeToken testing suite", function () {
     });
 
     it("Should revert with reason 'transaction already processed'", async function () {
-      await expect(bridgeSrc.release(25, accounts[1], 1)).to.be.revertedWith(
+      await expect(bridgeSrc.release(accounts[1], 25, 1)).to.be.revertedWith(
         "transaction already processed"
       );
     });
