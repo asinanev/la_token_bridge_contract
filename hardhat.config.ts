@@ -20,10 +20,17 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
   }
 });
 
-task("deploy", "Deploys the contracts").setAction(
+task("deploy-bridge", "Deploy a bridge contract").setAction(
   async (taskArguments, taskArgs, hre) => {
-    const deployLibraryContract = require("./scripts/deployBridgeContracts");
-    await deployLibraryContract(taskArguments);
+    const deployBridgeContract = require("./scripts/deployBridgeContracts");
+    await deployBridgeContract(taskArguments);
+  }
+);
+
+task("deploy-token", "Deploy the token contract").setAction(
+  async (taskArguments, taskArgs, hre) => {
+    const deployTokenContract = require("./scripts/deployTokenContract");
+    await deployTokenContract(taskArguments);
   }
 );
 
@@ -31,15 +38,31 @@ task("deploy", "Deploys the contracts").setAction(
 // Go to https://hardhat.org/config/ to learn more
 
 const config: HardhatUserConfig = {
-  solidity: "0.8.4",
+  solidity: {
+    version: "0.8.4",
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 10,
+      },
+    },
+  },
   networks: {
-    ropsten: {
-      url: process.env.INFURA_API_ROPSTEN_URL || "",
+    kovan: {
+      url: process.env.INFURA_API_KOVAN_URL || "",
+      chainId: 42,
       accounts:
         process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
     },
     rinkeby: {
       url: process.env.INFURA_API_RINKEBY_URL || "",
+      chainId: 4,
+      accounts:
+        process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
+    },
+    bsc: {
+      url: "https://data-seed-prebsc-1-s1.binance.org:8545",
+      chainId: 97,
       accounts:
         process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
     },

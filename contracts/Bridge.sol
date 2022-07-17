@@ -1,68 +1,70 @@
 //SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import "./IERC20Mintable.sol";
+import "@openzeppelin/contracts/token/ERC20/presets/ERC20PresetMinterPauser.sol";
 
 contract Bridge {
 
-    address private gateway;
-    uint private nonce;
+    mapping(address => address) private nativeToWrapped;
 
-    mapping(address => bool) private tokenExistance;
-    mapping(address => IERC20Mintable) private tokenList;
-    mapping(uint => bool) private processedNonces;
-    
-    event LogETHLocked(address sender, uint256 amount, uint nonce);
-    event LogTokenMinted(address tokenAddress, address receiver, uint256 amount, uint nonce);
-    event LogTokenBurned(address tokenAddress, address sender, uint256 amount, uint nonce);
-    event LogETHReleased(address receiver, uint256 amount, uint nonce);
+    event LogTokensLocked(address tokenAddress, address indexed sender, uint256 amount);
+    event LogTokensClaimed(address tokenAddress, address indexed receiver, uint256 amount);
+    event LogTokensBurned(address tokenAddress, address indexed sender, uint256 amount);
+    event LogTokensReleased(address indexed receiver, uint256 amount);
 
-    constructor(address _gateway) {
-        gateway = _gateway;
-    }
+    constructor() {}
 
-    function lock() external payable {
-		require(msg.value > 0, "amount is too low");
-        nonce++;
-		emit LogETHLocked(msg.sender, msg.value, nonce);
+    function lock(address _nativeTokenAddress, uint256 _amount) external payable checkAmount(msg.value) checkAmount(_amount) {
+
+        ERC20PresetMinterPauser(_nativeTokenAddress).transferFrom(msg.sender, address(this), _amount);
+
+		emit LogTokensLocked(_nativeTokenAddress, msg.sender, _amount);
 	}
 
-    function claim(address tokenAddress, uint amount, address to, uint _nonce) external onlyGateway {
-        require(to != address(0), "cannot trasfer to zero address");
-        require(amount > 0, "amount is too low");
-        require(processedNonces[_nonce] == false, "transaction already processed");
-        processedNonces[_nonce] = true;
+    function claim(address _nativeTokenAddress, string memory _nativeName, string memory _nativeSymbol, uint _amount, address _recepient) external checkAddress(_recepient) checkAmount(_amount) {
+        address wrappedTokenAddress = nativeToWrapped[_nativeTokenAddress];
+        ERC20PresetMinterPauser wrappedTokenInstance;
 
-        if (!tokenExistance[tokenAddress]) {
-            tokenList[tokenAddress] = IERC20Mintable(tokenAddress);
-            tokenExistance[tokenAddress] = true;
+        if (wrappedTokenAddress != address(0)) {
+            wrappedTokenInstance = ERC20PresetMinterPauser(wrappedTokenAddress);
+        } else {
+            wrappedTokenInstance = new ERC20PresetMinterPauser(_nativeName, _nativeSymbol);
+            nativeToWrapped[_nativeTokenAddress] = address(
+                wrappedTokenInstance
+            );
         }
 
-        tokenList[tokenAddress].mint(to, amount);
+        wrappedTokenInstance.mint(_recepient, _amount);
 
-        emit LogTokenMinted(tokenAddress, to, amount, _nonce);
+        emit LogTokensClaimed(nativeToWrapped[_nativeTokenAddress], _recepient, _amount);
     }
     
-    function burnFrom(address tokenAddress, address  owner, address spender, uint256 value, uint256 deadline, uint8 v, bytes32 r, bytes32 s) external onlyGateway {
-        require(value > 0, "amount is too low");
-		tokenList[tokenAddress].burnFrom(owner, spender, value, deadline, v, r, s);
-        nonce++;
-        emit LogTokenBurned(tokenAddress, msg.sender, value, nonce);
+    function burn(address _nativeTokenAddress, uint256 _value) external checkAmount(_value)  {
+        address wrappedTokenAddress = nativeToWrapped[_nativeTokenAddress];
+        require(wrappedTokenAddress != address(0), "token contract unknown");
+
+		ERC20PresetMinterPauser(wrappedTokenAddress).burnFrom(msg.sender, _value);
+
+        emit LogTokensBurned(_nativeTokenAddress, msg.sender, _value);
     }
 
-	function release(uint value, address receiver, uint _nonce) external onlyGateway {
-		require(value > 0, "amount is too low");
-        require(processedNonces[_nonce] == false, "transaction already processed");
-        processedNonces[_nonce] = true;
+	function release(address _nativeTokenAddress, address _receiver, uint _amount) external checkAddress(_receiver) checkAmount(_amount) {
+        ERC20PresetMinterPauser(_nativeTokenAddress).transfer(_receiver, _amount);
 
-		payable(receiver).transfer(value);
-		
-        emit LogETHReleased(receiver, value, _nonce);
+        emit LogTokensReleased(_receiver, _amount);
 	}
 
-    modifier onlyGateway {
-      require(msg.sender == gateway, "only gateway has access");
-      _;
+    function getCorrespondingContract(address _nativeTokenAddress) external view returns(address) {
+        return nativeToWrapped[_nativeTokenAddress];
     }
 
+    modifier checkAddress(address _address) {
+        require(_address != address(0), "cannot use the zero address");
+        _;
+    }
+
+    modifier checkAmount(uint256 _amount) {
+        require(_amount > 0, "amount is too low");
+        _;
+    }
 }
