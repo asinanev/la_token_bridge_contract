@@ -1,70 +1,61 @@
 //SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.0;
 
-import { WrappedToken } from "./WrappedToken.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/presets/ERC20PresetMinterPauser.sol";
 
-contract Bridge is Ownable{
-
-    address private gateway;
-    uint private nonce;
+contract Bridge {
 
     mapping(address => address) private nativeToWrapped;
-    mapping(uint => bool) private processedNonces;
-    
-    event LogETHLocked(address tokenAddress, address sender, uint256 amount, uint nonce);
-    event LogTokenMinted(address tokenAddress, address receiver, uint256 amount, uint nonce);
-    event LogTokenBurned(address tokenAddress, address sender, uint256 amount, uint nonce);
-    event LogETHReleased(address receiver, uint256 amount, uint nonce);
 
-    constructor(address _gateway) {
-        gateway = _gateway;
-    }
+    event LogTokensLocked(address tokenAddress, address indexed sender, uint256 amount);
+    event LogTokensClaimed(address tokenAddress, address indexed receiver, uint256 amount);
+    event LogTokensBurned(address tokenAddress, address indexed sender, uint256 amount);
+    event LogTokensReleased(address indexed receiver, uint256 amount);
 
-    function lock(address _tokenAddress) external payable checkAmount(msg.value) {
-        nonce++;
-		emit LogETHLocked(_tokenAddress, msg.sender, msg.value, nonce);
+    constructor() {}
+
+    function lock(address _nativeTokenAddress, uint256 _amount) external payable checkAmount(msg.value) checkAmount(_amount) {
+
+        ERC20PresetMinterPauser(_nativeTokenAddress).transferFrom(msg.sender, address(this), _amount);
+
+		emit LogTokensLocked(_nativeTokenAddress, msg.sender, _amount);
 	}
 
-    function claim(address _tokenAddress, uint _value, address _recepient, uint _nonce) external onlyGateway checkAddress(_recepient) checkStatus(_nonce) checkAmount(_value) {
-        processedNonces[_nonce] = true;
-
-        address wrappedTokenAddress = nativeToWrapped[_tokenAddress];
-        WrappedToken wrappedTokenInstance;
+    function claim(address _nativeTokenAddress, string memory _nativeName, string memory _nativeSymbol, uint _amount, address _recepient) external checkAddress(_recepient) checkAmount(_amount) {
+        address wrappedTokenAddress = nativeToWrapped[_nativeTokenAddress];
+        ERC20PresetMinterPauser wrappedTokenInstance;
 
         if (wrappedTokenAddress != address(0)) {
-            wrappedTokenInstance = WrappedToken(wrappedTokenAddress);
+            wrappedTokenInstance = ERC20PresetMinterPauser(wrappedTokenAddress);
         } else {
-            wrappedTokenInstance = new WrappedToken();
-            nativeToWrapped[_tokenAddress] = address(
+            wrappedTokenInstance = new ERC20PresetMinterPauser(_nativeName, _nativeSymbol);
+            nativeToWrapped[_nativeTokenAddress] = address(
                 wrappedTokenInstance
             );
         }
 
-        wrappedTokenInstance.mint(_recepient, _value);
+        wrappedTokenInstance.mint(_recepient, _amount);
 
-        emit LogTokenMinted(nativeToWrapped[_tokenAddress], _recepient, _value, _nonce);
+        emit LogTokensClaimed(nativeToWrapped[_nativeTokenAddress], _recepient, _amount);
     }
     
-    function burnFrom(address _tokenAddress, address  _owner, uint256 _value) external onlyGateway checkAddress(_owner) checkAmount(_value)  {
-        address wrappedTokenAddress = nativeToWrapped[_tokenAddress];
+    function burn(address _nativeTokenAddress, uint256 _value) external checkAmount(_value)  {
+        address wrappedTokenAddress = nativeToWrapped[_nativeTokenAddress];
         require(wrappedTokenAddress != address(0), "token contract unknown");
-        WrappedToken wrappedTokenInstance = WrappedToken(wrappedTokenAddress);
-		wrappedTokenInstance.burnFrom(_owner, _value);
 
-        nonce++;
-        emit LogTokenBurned(_tokenAddress, _owner, _value, nonce);
+		ERC20PresetMinterPauser(wrappedTokenAddress).burnFrom(msg.sender, _value);
+
+        emit LogTokensBurned(_nativeTokenAddress, msg.sender, _value);
     }
 
-	function release(address _receiver, uint _value, uint _nonce) external onlyGateway checkAddress(_receiver) checkStatus(_nonce) checkAmount(_value) {
-        processedNonces[_nonce] = true;
-		payable(_receiver).transfer(_value);
-        emit LogETHReleased(_receiver, _value, _nonce);
+	function release(address _nativeTokenAddress, address _receiver, uint _amount) external checkAddress(_receiver) checkAmount(_amount) {
+        ERC20PresetMinterPauser(_nativeTokenAddress).transfer(_receiver, _amount);
+
+        emit LogTokensReleased(_receiver, _amount);
 	}
 
-    modifier onlyGateway {
-      require(msg.sender == gateway, "only gateway has access");
-      _;
+    function getCorrespondingContract(address _nativeTokenAddress) external view returns(address) {
+        return nativeToWrapped[_nativeTokenAddress];
     }
 
     modifier checkAddress(address _address) {
@@ -72,13 +63,8 @@ contract Bridge is Ownable{
         _;
     }
 
-    modifier checkStatus(uint256 _nonce) {
-        require(processedNonces[_nonce] == false, "transaction already processed");
-        _;
-    }
-
-    modifier checkAmount(uint256 _value) {
-        require(_value > 0, "amount is too low");
+    modifier checkAmount(uint256 _amount) {
+        require(_amount > 0, "amount is too low");
         _;
     }
 }

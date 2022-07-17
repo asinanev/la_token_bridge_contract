@@ -13,37 +13,46 @@ describe("Bridge and BridgeToken testing suite", function () {
   let nativeToken: any;
   let remoteToken: any;
 
-  let currentSrcNonce = 0;
-  let currentTrgNonce = 0;
-
   before(async () => {
     accounts = await web3.eth.getAccounts();
 
-    bridgeSrc = await Bridge.new(accounts[0]);
-    bridgeTrg = await Bridge.new(accounts[0]);
+    bridgeSrc = await Bridge.new();
+    bridgeTrg = await Bridge.new();
 
     nativeToken = await WrappedToken.new();
   });
 
   describe("Locking mechanism", function () {
-    it("Should revert with reason 'amount is too low'", async function () {
+    it("Should revert with reason 'amount is too low' for bridging fees", async function () {
       await expect(
-        bridgeSrc.lock(nativeToken.address, { from: accounts[1] })
+        bridgeSrc.lock(nativeToken.address, 50, { from: accounts[1] })
       ).to.be.revertedWith("amount is too low");
     });
 
-    it("Should emit LogETHLocked event with senders address and the amount of ETH locked", async function () {
-      const lockETHTx = await bridgeSrc.lock(nativeToken.address, {
+    it("Should revert with reason 'amount is too low' for token amount", async function () {
+      await expect(
+        bridgeSrc.lock(nativeToken.address, 0, {
+          from: accounts[1],
+          value: 50,
+        })
+      ).to.be.revertedWith("amount is too low");
+    });
+
+    it("Should emit LogTokensLocked event with senders address and the amount of ETH locked", async function () {
+      await nativeToken.mint(accounts[1], 50);
+      await nativeToken.approve(bridgeSrc.address, 50, {
+        from: accounts[1],
+      });
+
+      const lockETHTx = await bridgeSrc.lock(nativeToken.address, 50, {
         from: accounts[1],
         value: 50,
       });
-      await expectEvent(lockETHTx, "LogETHLocked", {
+
+      await expectEvent(lockETHTx, "LogTokensLocked", {
         sender: accounts[1],
         amount: new BN(50),
-        nonce: new BN(1),
       });
-
-      currentSrcNonce = lockETHTx.logs[0].args[3];
     });
   });
 
@@ -52,79 +61,72 @@ describe("Bridge and BridgeToken testing suite", function () {
       await expect(
         bridgeTrg.claim(
           nativeToken.address,
+          "Wrapped Token",
+          "WTKN",
           20,
-          constants.ZERO_ADDRESS,
-          currentSrcNonce
+          constants.ZERO_ADDRESS
         )
       ).to.be.revertedWith("cannot use the zero address");
     });
     it("Should revert with reason 'amount is too low'", async function () {
       await expect(
-        bridgeTrg.claim(nativeToken.address, 0, accounts[2], currentSrcNonce)
+        bridgeTrg.claim(
+          nativeToken.address,
+          "Wrapped Token",
+          "WTKN",
+          0,
+          accounts[2]
+        )
       ).to.be.revertedWith("amount is too low");
     });
 
-    it("Should revert with reason 'only gateway has access'", async function () {
-      await expect(
-        bridgeTrg.claim(nativeToken.address, 50, accounts[2], currentSrcNonce, {
-          from: accounts[2],
-        })
-      ).to.be.revertedWith("only gateway has access");
-    });
-
-    it("Should emit LogTokenMinted event with senders address and the amount of BRG minted", async function () {
+    it("Should emit LogTokensClaimed event with senders address and the amount of WTKN minted", async function () {
       const mintETHTx = await bridgeTrg.claim(
         nativeToken.address,
+        "Wrapped Token",
+        "WTKN",
         25,
-        accounts[2],
-        currentSrcNonce
+        accounts[2]
       );
 
-      await expectEvent(mintETHTx, "LogTokenMinted");
+      await expectEvent(mintETHTx, "LogTokensClaimed");
       remoteToken = await WrappedToken.at(mintETHTx.logs[0].args[0]);
     });
 
-    it("Should emit LogTokenMinted event with senders address and the amount of BRG minted", async function () {
+    it("Should emit LogTokensClaimed event with senders address and the amount of WTKN minted", async function () {
       const mintETHTx = await bridgeTrg.claim(
         nativeToken.address,
+        "Wrapped Token",
+        "WTKN",
         25,
-        accounts[2],
-        2
+        accounts[2]
       );
 
-      await expectEvent(mintETHTx, "LogTokenMinted");
+      await expectEvent(mintETHTx, "LogTokensClaimed");
       remoteToken = await WrappedToken.at(mintETHTx.logs[0].args[0]);
     });
 
-    it("Should revert with reason 'transaction already processed'", async function () {
-      await expect(
-        bridgeTrg.claim(nativeToken.address, 50, accounts[2], currentSrcNonce)
-      ).to.be.revertedWith("transaction already processed");
+    it("Should return the remote token address", async function () {
+      expect(
+        await bridgeTrg.getCorrespondingContract(nativeToken.address)
+      ).to.be.equal(remoteToken.address);
     });
   });
 
   describe("Burning mechanism", async function () {
     it("Should be reverted with reason 'amount is too low'", async function () {
       await expect(
-        bridgeTrg.burnFrom(nativeToken.address, accounts[2], 0)
+        bridgeTrg.burn(nativeToken.address, 0, { from: accounts[2] })
       ).to.be.revertedWith("amount is too low");
-    });
-
-    it("Should be reverted with reason 'only gateway has access'", async function () {
-      await expect(
-        bridgeTrg.burnFrom(nativeToken.address, accounts[2], 50, {
-          from: accounts[2],
-        })
-      ).to.be.revertedWith("only gateway has access");
     });
 
     it("Should be reverted with reason 'token contract unknown'", async function () {
       await expect(
-        bridgeTrg.burnFrom(constants.ZERO_ADDRESS, accounts[2], 50)
+        bridgeTrg.burn(constants.ZERO_ADDRESS, 50, { from: accounts[2] })
       ).to.be.revertedWith("token contract unknown");
     });
 
-    it("Should collect tokens to be burned, burn them and emit a LogTokenBurned event", async function () {
+    it("Should collect tokens to be burned, burn them and emit a LogTokensBurned event", async function () {
       const approvalTx = await remoteToken.approve(bridgeTrg.address, 50, {
         from: accounts[2],
       });
@@ -135,55 +137,37 @@ describe("Bridge and BridgeToken testing suite", function () {
         value: new BN(50),
       });
 
-      const burnTokensTx = await bridgeTrg.burnFrom(
-        nativeToken.address,
-        accounts[2],
-        25
-      );
+      const burnTokensTx = await bridgeTrg.burn(nativeToken.address, 25, {
+        from: accounts[2],
+      });
 
-      await expectEvent(burnTokensTx, "LogTokenBurned", {
+      await expectEvent(burnTokensTx, "LogTokensBurned", {
         tokenAddress: nativeToken.address,
         sender: accounts[2],
         amount: new BN(25),
-        nonce: new BN(1),
       });
-
-      currentTrgNonce = burnTokensTx.logs[0].args[3];
     });
   });
 
   describe("Release mechanism", async function () {
-    it("Should revert with reason 'only gateway has access'", async function () {
-      await expect(
-        bridgeSrc.release(accounts[1], 0, currentTrgNonce, {
-          from: accounts[1],
-        })
-      ).to.be.revertedWith("only gateway has access");
-    });
-
     it("Should revert with reason 'amount is too low'", async function () {
-      await expect(bridgeSrc.release(accounts[1], 0, 1)).to.be.revertedWith(
-        "amount is too low"
-      );
+      await expect(
+        bridgeSrc.release(nativeToken.address, accounts[1], 0)
+      ).to.be.revertedWith("amount is too low");
     });
 
-    it("Should release the locked tokens and send them to the receiver, then emit LogETHReleased event", async function () {
+    it("Should release the locked tokens and send them to the receiver, then emit LogTokensReleased event", async function () {
       const releaseETHTx = await bridgeSrc.release(
+        nativeToken.address,
         accounts[1],
         25,
-        currentTrgNonce
+        { from: accounts[1] }
       );
-      await expectEvent(releaseETHTx, "LogETHReleased", {
+
+      await expectEvent(releaseETHTx, "LogTokensReleased", {
         receiver: accounts[1],
         amount: new BN(25),
-        nonce: new BN(1),
       });
-    });
-
-    it("Should revert with reason 'transaction already processed'", async function () {
-      await expect(bridgeSrc.release(accounts[1], 25, 1)).to.be.revertedWith(
-        "transaction already processed"
-      );
     });
   });
 });
